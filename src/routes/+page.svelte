@@ -23,6 +23,8 @@
     let countriesInput: HTMLInputElement | null = null;
     let statesInput: HTMLInputElement | null = null;
     let showHowItWorks: boolean = false;
+    let showYearSummary: boolean = false;
+    let totalWorkingDays: number = 0;
 
     // Default settings
     let defaultYear: number = new Date().getFullYear();
@@ -63,6 +65,13 @@
 
     $: if (selectedCountryCode && year !== undefined && year) {
         updateHolidays();
+    }
+
+    // Reactive: calculate total working days
+    $: {
+        if (year && holidays && weekendDays) {
+            totalWorkingDays = calculateTotalWorkingDays();
+        }
     }
 
     // Reactive: when fixedDaysOff changes, update calculations
@@ -337,6 +346,15 @@
             }
         }
     }
+    function toggleYearSummary() {
+        showYearSummary = !showYearSummary;
+        if (showYearSummary) {
+            const yearSummaryElement = document.querySelector('#year-summary');
+            if (yearSummaryElement) {
+                yearSummaryElement.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    }
 
     function toggleHolidayVisibility(holiday: { date: Date; name: string; hidden?: boolean }) {
         if (!selectedCountryCode) return;
@@ -604,6 +622,31 @@
         
         const firstDay = getFirstDayOfWeek(selectedCountryCode || 'US');
         return [...days.slice(firstDay), ...days.slice(0, firstDay)];
+    }
+
+    function calculateTotalWorkingDays() {
+        if (!year) return 0;
+        let count = 0;
+        const start = new Date(year, 0, 1);
+        const end = new Date(year, 11, 31);
+        const current = new Date(start);
+        
+        // Ensure weekendDays is defined
+        const weekends = weekendDays || [0, 6];
+        
+        while (current <= end) {
+            const isWknd = weekends.includes(current.getDay());
+            // holidays array in +page.svelte contains objects with .date and .hidden
+            const isHol = holidays ? holidays.some(h => !h.hidden && datesMatch(h.date, current)) : false;
+            const isFixed = fixedDaysOff ? fixedDaysOff.some(fd => datesMatch(fd, current)) : false;
+            const isOpt = optimizedDaysOff ? optimizedDaysOff.some(od => datesMatch(od, current)) : false;
+            
+            if (!isWknd && !isHol && !isFixed && !isOpt) {
+                count++;
+            }
+            current.setDate(current.getDate() + 1);
+        }
+        return count;
     }
 </script>
 
@@ -1132,6 +1175,25 @@
     .date-picker-save:hover {
         background-color: #4fa8c5;
     }
+
+    #year-summary h3 {
+        text-align: center;
+        margin-top: 0;
+    }
+
+    #year-summary .summary-list {
+        text-align: center;
+    }
+
+    #year-summary ul {
+        display: inline-block;
+        text-align: left;
+    }
+
+    #year-summary li {
+        justify-content: center;
+        margin: 5px 0;
+    }
 </style>
 
 <main>
@@ -1376,6 +1438,32 @@
             <button class="date-picker-button date-picker-save" on:click={() => showDatePicker = false}>
                 Done
             </button>
+        </div>
+    </div>
+    {/if}
+
+    <button type="button" class="toggle-text" on:click={toggleYearSummary}>
+        {showYearSummary ? 'Hide Year Summary' : 'Show Year Summary'}
+    </button>
+
+    {#if showYearSummary}
+    <div class="content-box" id="year-summary">
+        <h3>Year Summary</h3>
+        <p>Total Working Days: <strong>{totalWorkingDays}</strong></p>
+        <p>Total Consecutive Free Days: <strong>{consecutiveDaysOff.reduce((total, group) => total + group.totalDays, 0)}</strong></p>
+        <div class="summary-list">
+            {#if consecutiveDaysOff.length > 0}
+                <ul>
+                    {#each consecutiveDaysOff as period}
+                        <li>
+                            {formatDate(period.startDate)} - {formatDate(period.endDate)} 
+                            <span class="bold">({period.totalDays} days)</span>
+                        </li>
+                    {/each}
+                </ul>
+            {:else}
+                <p>No consecutive free days found.</p>
+            {/if}
         </div>
     </div>
     {/if}
